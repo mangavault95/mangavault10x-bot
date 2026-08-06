@@ -1,0 +1,22 @@
+{
+  "name": "mangavault10x-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bot Telegram per registrare i volumi comprati in MangaVault",
+  "type": "module",
+  "scripts": {
+    "prova": "node scripts/prova.js",
+    "verifica": "node --env-file=.env scripts/verifica.js",
+    "simula": "node --env-file=.env scripts/simula.js",
+    "locale": "node --env-file=.env scripts/locale.js",
+    "webhook": "node --env-file=.env scripts/webhook.js",
+    "chatid": "node --env-file=.env scripts/webhook.js --chatid"
+  },
+  "dependencies": {
+    "fuse.js": "^7.3.0",
+    "pg": "^8.11.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
