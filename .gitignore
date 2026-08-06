@@ -1,4 +1,8 @@
 node_modules
+
+# I segreti stanno qui e non devono uscire dal computer.
+# `.env.example` invece va committato: dice quali chiavi servono.
 .env
 .env.local
+
 .vercel
