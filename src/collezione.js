@@ -342,13 +342,24 @@ export async function arretrati() {
   // conclusa è quasi sempre lo stesso numero. Ma le due cose restano
   // distinte nella risposta, perché su una serie ancora in corso quel
   // totale è giapponese e comprende volumi che qui non esistono.
+  // Le droppate restano fuori: non si compra il seguito di una serie
+  // mollata. Dalla migrazione 011 mollare è una decisione di chi legge
+  // e non più una colonna della serie, quindi va detto di chi — e qui
+  // è del PROPRIETARIO: questa è la sua lista della spesa, e se
+  // l'altra lettrice ha mollato una serie che lui segue i volumi gli
+  // mancano lo stesso.
   const { rows } = await connessione().query(
-    `SELECT "Titolo", "VolumiPosseduti", "VolumiItalia",
-            COALESCE("VolumiItalia", "VolumiTotali") AS traguardo
-       FROM "Manga"
-      WHERE COALESCE("Droppato", false) = false
-        AND COALESCE("VolumiItalia", "VolumiTotali") > COALESCE("VolumiPosseduti", 0)
-      ORDER BY (COALESCE("VolumiItalia", "VolumiTotali") - COALESCE("VolumiPosseduti", 0)), "Titolo"`
+    `SELECT m."Titolo", m."VolumiPosseduti", m."VolumiItalia",
+            COALESCE(m."VolumiItalia", m."VolumiTotali") AS traguardo
+       FROM "Manga" m
+      WHERE NOT EXISTS (
+              SELECT 1
+                FROM letture_droppate d
+                JOIN utenti u ON u.id = d.utente_id
+               WHERE d.manga_id = m."ID" AND u.proprietario
+            )
+        AND COALESCE(m."VolumiItalia", m."VolumiTotali") > COALESCE(m."VolumiPosseduti", 0)
+      ORDER BY (COALESCE(m."VolumiItalia", m."VolumiTotali") - COALESCE(m."VolumiPosseduti", 0)), m."Titolo"`
   );
 
   return rows.map((r) => ({
