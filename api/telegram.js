@@ -518,7 +518,12 @@ async function comando(chatId, nome, argomento) {
         (s) =>
           `• ${esc(s.titolo)} — hai ${s.posseduti}, ` +
           `${s.inItalia ? "usciti" : "in tutto"} ${s.usciti} ` +
-          `(<b>${s.usciti - s.posseduti}</b>)`
+          `(<b>${s.usciti - s.posseduti}</b>)` +
+          // Una serie mollata resta in elenco — mancanti vuol dire
+          // quali volumi mancano — ma segnata, o davanti allo scaffale
+          // ti ritroveresti a comprare il seguito di una che avevi
+          // lasciato apposta.
+          (s.droppata ? " · <i>droppata</i>" : "")
       );
 
     const quanti = serie.reduce((s, x) => s + (x.usciti - x.posseduti), 0);

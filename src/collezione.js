@@ -334,6 +334,9 @@ export async function acquistiDelMese(giornoDelMese) {
  * oggi), non "VolumiTotali" (quanti ne esistono in Giappone): sono
  * due domande diverse e la seconda farebbe risultare arretrati dei
  * volumi che nessuno può ancora comprare.
+ *
+ * Ci sono anche le serie che hai mollato, segnate come tali: la
+ * domanda è quali volumi mancano, non quali vale la pena comprare.
  */
 export async function arretrati() {
   // Il ripiego su "VolumiTotali" è la stessa regola del sito
@@ -342,23 +345,29 @@ export async function arretrati() {
   // conclusa è quasi sempre lo stesso numero. Ma le due cose restano
   // distinte nella risposta, perché su una serie ancora in corso quel
   // totale è giapponese e comprende volumi che qui non esistono.
-  // Le droppate restano fuori: non si compra il seguito di una serie
-  // mollata. Dalla migrazione 011 mollare è una decisione di chi legge
-  // e non più una colonna della serie, quindi va detto di chi — e qui
-  // è del PROPRIETARIO: questa è la sua lista della spesa, e se
-  // l'altra lettrice ha mollato una serie che lui segue i volumi gli
-  // mancano lo stesso.
+  // LE DROPPATE CI SONO, SEGNATE.
+  //
+  // Prima restavano fuori dall'elenco, in silenzio: sembrava sensato
+  // — non si compra il seguito di una serie mollata — ma "mancanti"
+  // vuol dire i volumi che mancano, e un elenco che ne toglie qualcuno
+  // senza dirlo è un elenco di cui non ci si può fidare. Adesso
+  // compaiono con l'etichetta, e sei tu a decidere se comprarle.
+  //
+  // Droppate da CHI: dalla migrazione 011 mollare è una decisione di
+  // chi legge, non un fatto della serie. Qui conta la tua — questa è
+  // la tua lista della spesa, e se l'altra lettrice ha mollato una
+  // serie che tu segui i volumi ti mancano lo stesso.
   const { rows } = await connessione().query(
     `SELECT m."Titolo", m."VolumiPosseduti", m."VolumiItalia",
-            COALESCE(m."VolumiItalia", m."VolumiTotali") AS traguardo
-       FROM "Manga" m
-      WHERE NOT EXISTS (
+            COALESCE(m."VolumiItalia", m."VolumiTotali") AS traguardo,
+            EXISTS (
               SELECT 1
                 FROM letture_droppate d
                 JOIN utenti u ON u.id = d.utente_id
                WHERE d.manga_id = m."ID" AND u.proprietario
-            )
-        AND COALESCE(m."VolumiItalia", m."VolumiTotali") > COALESCE(m."VolumiPosseduti", 0)
+            ) AS droppata
+       FROM "Manga" m
+      WHERE COALESCE(m."VolumiItalia", m."VolumiTotali") > COALESCE(m."VolumiPosseduti", 0)
       ORDER BY (COALESCE(m."VolumiItalia", m."VolumiTotali") - COALESCE(m."VolumiPosseduti", 0)), m."Titolo"`
   );
 
@@ -366,6 +375,7 @@ export async function arretrati() {
     titolo: String(r.Titolo).trim(),
     posseduti: Number(r.VolumiPosseduti || 0),
     usciti: Number(r.traguardo),
+    droppata: Boolean(r.droppata),
     inItalia: r.VolumiItalia !== null
   }));
 }
