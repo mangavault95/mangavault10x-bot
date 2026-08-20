@@ -340,6 +340,28 @@ function statoSerie(testo) {
   return trovato ? trovato[1] : null;
 }
 
+// Il pubblico dell'opera, com'è scritto da loro → il codice che va in
+// tabella (vedi il vincolo `categoria_nota` in sql/010_kachinuki.sql
+// del backend). La riga "Categoria" può elencarne due — "Seinen" e
+// "Pubblico Adulto" — e la seconda non è un pubblico diverso ma un
+// avvertimento sui contenuti: vale solo quando è l'unica cosa scritta.
+const CATEGORIE = [
+  [/kodomo/i, "kodomo"],
+  [/sh(o|ō|ou)nen/i, "shonen"],
+  [/sh(o|ō|ou)(jo|ujo)/i, "shojo"],
+  [/seinen/i, "seinen"],
+  [/josei/i, "josei"]
+];
+
+function categoriaDa(voci) {
+  for (const voce of voci) {
+    const trovata = CATEGORIE.find(([forma]) => forma.test(voce));
+    if (trovata) return trovata[1];
+  }
+
+  return voci.some((v) => /pubblico\s+adulto/i.test(v)) ? "adulto" : null;
+}
+
 /**
  * L'editore italiano sta nella riga "Disponibilità", insieme al
  * pulsante del negozio partner: tengo solo il primo link, che è la
@@ -363,7 +385,19 @@ export async function scheda(animeClickId) {
   const risposta = await prendi(`${BASE}/manga/${animeClickId}/-/`, { redirect: "follow" });
   const html = await risposta.text();
 
-  const dl = html.slice(html.indexOf('<dl class="dl-horizontal">'), html.indexOf("</dl>"));
+  // La classe si cerca per pezzo e non per intero: quel <dl> si
+  // chiamava `class="dl-horizontal"` e oggi si chiama
+  // `class="ac-dl-horizontal"`. Cercarlo alla lettera lo faceva
+  // sparire in silenzio — la scheda arrivava, la tabella risultava
+  // vuota, e "senza autore, senza editore, senza trama" sembrava un
+  // fatto invece che un parser rotto.
+  //
+  // ⚠️ Gemella di `tabellaScheda` nel backend: se una va corretta,
+  // vanno corrette tutte e due.
+  const inizio = html.search(/<dl[^>]*dl-horizontal[^>]*>/i);
+  const fine = inizio < 0 ? -1 : html.indexOf("</dl>", inizio);
+  const dl = inizio < 0 ? "" : html.slice(inizio, fine < 0 ? undefined : fine);
+
   const campi = new Map();
 
   for (const [, dt, dd] of dl.matchAll(/<dt>([\s\S]*?)<\/dt>\s*<dd>([\s\S]*?)<\/dd>/g)) {
@@ -395,6 +429,12 @@ export async function scheda(animeClickId) {
   const generi = (campi.get("Genere") || []).flatMap(linkDi);
   const volumi = Number(valore("Volumi"));
 
+  // Il pubblico a cui l'opera è stata scritta ("Categoria" sulla
+  // scheda): shonen, seinen, shojo... AniList non ce l'ha in nessuna
+  // forma — i suoi generi dicono di cosa parla, mai per chi è — quindi
+  // questa è l'unica fonte che ce l'ha già in italiano.
+  const categoria = categoriaDa((campi.get("Categoria") || []).flatMap(linkDi));
+
   // L'anno può essere un intervallo ("2020 - 2024"): quello che
   // interessa è il primo, cioè quando la serie è cominciata.
   const anno = Number((valore("Anno") || "").match(/\d{4}/)?.[0]);
@@ -406,6 +446,7 @@ export async function scheda(animeClickId) {
     autore: persone("Storia"),
     disegnatore: persone("Disegni"),
     generi: [...new Set(generi)],
+    categoria,
     anno: Number.isFinite(anno) ? anno : null,
     // Il numero di volumi qui è quello GIAPPONESE, come su AniList:
     // quanti ne siano usciti in Italia lo dice la pagina /edizioni,

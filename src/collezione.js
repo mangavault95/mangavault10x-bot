@@ -411,10 +411,10 @@ export async function creaSerie(dati) {
     const { rows } = await cliente.query(
       `INSERT INTO "Manga"
          ("ID", "Titolo", "TitoloOriginale", "Autore", "Disegnatore", "Genere",
-          "Trama", "CoverURL", "Editore", "VolumiTotali", "StatoSerie",
+          "Categoria", "Trama", "CoverURL", "Editore", "VolumiTotali", "StatoSerie",
           "AnnoInizio", "AnimeClickID", "VolumiPosseduti", "Costo",
           "PrezzoCopertina", "DataAggiunta")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, $14, $15, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 0, $15, $16, $17)
        RETURNING ${CAMPI}`,
       [
         prossimo[0].id,
@@ -423,6 +423,10 @@ export async function creaSerie(dati) {
         dati.autore,
         dati.disegnatore,
         dati.genere,
+        // Il pubblico dell'opera. È la colonna che alimenta i temi del
+        // Kachinuki-sen ("Miglior seinen"): una serie creata qui senza
+        // categoria sarebbe l'unica esclusa da quei tornei.
+        dati.categoria ?? null,
         dati.trama,
         dati.cover,
         dati.editore,

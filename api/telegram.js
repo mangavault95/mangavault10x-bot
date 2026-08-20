@@ -434,6 +434,9 @@ async function creaERegistra({ chatId, animeClickId, volumi, prezzo, giorno, upd
     // I generi della collezione sono in inglese: mescolarci l'italiano
     // vorrebbe dire una serie che non compare in nessun filtro.
     genere: (daAniList?.generi?.length ? daAniList.generi : scheda.generi).join(", ") || null,
+    // La categoria invece è solo di AnimeClick: AniList non dice per
+    // quale pubblico un'opera è stata scritta.
+    categoria: scheda.categoria,
     trama: scheda.trama,
     cover: daAniList?.cover || scheda.cover,
     editore: scheda.editore,
