@@ -122,21 +122,37 @@ function somiglianza(cercato, trovato) {
 }
 
 function leggiSchede(frammento) {
-  // Ogni risultato è un blocco .thumbnail: taglio lì invece di
+  // Ogni risultato è un blocco "thumbnail": taglio lì invece di
   // affidarmi all'annidamento dei div, che con una regex non si
   // conta.
-  const blocchi = String(frammento).split(/<div class="thumbnail/).slice(1);
+  //
+  // ⚠️ Cerco il PEZZO della classe e non la classe intera, per la
+  // stessa ragione del <dl> della scheda: il 21/08/2026 le classi dei
+  // risultati sono diventate `ac-thumbnail` e `ac-caption`, e cercate
+  // alla lettera facevano rispondere "non ho trovato niente" a
+  // qualunque titolo — mentre AnimeClick stava rispondendo "Ci sono 4
+  // titoli in database". Il bot non se ne accorgeva: nessun errore,
+  // solo una serie nuova che non si riusciva più a creare.
+  const blocchi = String(frammento).split(/<div class="[^"]*thumbnail[^"]*"/i).slice(1);
   const trovati = [];
 
-  for (const blocco of blocchi) {
-    const link = blocco.match(/href="\/manga\/(\d+)\/([a-z0-9-]*)"/i);
+  for (const grezzo of blocchi) {
+    // Il tooltip della copertina è HTML dentro un attributo, con un
+    // altro <h5> dentro: va tolto o si legge quello invece del titolo.
+    const blocco = grezzo.replace(/data-bs-content="[\s\S]*?"/i, " ");
+
+    const link = blocco.match(/href="\/manga\/(\d+)\/([^"]*)"/i);
     if (!link) continue;
 
-    const didascalia = blocco.match(/<div class="caption[\s\S]*?<h5>([\s\S]*?)<\/h5>/i);
+    const didascalia = blocco.match(/<div class="[^"]*caption[^"]*"[\s\S]*?<h5>([\s\S]*?)<\/h5>/i);
     const titolo = didascalia ? testoDi(didascalia[1]) : null;
     if (!titolo) continue;
 
-    const anno = blocco.match(/<div class="pull-right">\s*(\d{4})\s*<\/div>/);
+    // L'anno stava accanto al titolo, adesso è nel tooltip vicino
+    // all'icona del calendario: si guardano tutti e due i posti.
+    const anno =
+      blocco.match(/<div class="pull-right">\s*(\d{4})\s*<\/div>/) ||
+      grezzo.match(/fa-calendar[^>]*>[\s\S]{0,80}?(\d{4})/i);
 
     trovati.push({
       id: Number(link[1]),
