@@ -1,0 +1,26 @@
+# Cosa NON sale su Vercel quando si pubblica da qui.
+#
+# Serve perché questo progetto si pubblica a mano (`vercel --prod`) e
+# non da GitHub: il caricamento parte dalla CARTELLA, non da un commit,
+# quindi porterebbe su anche i file che git non ha mai visto — a
+# cominciare da `.env`, che ha dentro i token dei due bot. In
+# produzione le variabili le legge dal pannello di Vercel: quel file
+# lassù non serve a niente e sarebbe solo una copia dei segreti in un
+# posto in più.
+#
+# ⚠️ Da quando questo file esiste, `.gitignore` non conta più per il
+# caricamento: quello che va tenuto fuori va scritto QUI, anche se è
+# già scritto lì.
+
+.env
+.env.local
+.env.example
+
+node_modules
+.vercel
+.git
+
+# Roba da riga di comando: gira sul computer, non sul server.
+scripts
+sql
+README.md
