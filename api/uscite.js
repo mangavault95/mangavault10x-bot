@@ -216,7 +216,16 @@ export default async function handler(req, res) {
   // Il segreto lo manda Telegram in un'intestazione, e l'ha ricevuto
   // da noi quando abbiamo registrato il webhook: senza, chiunque
   // conoscesse l'indirizzo potrebbe fingersi Telegram.
-  if (req.headers["x-telegram-bot-api-secret-token"] !== process.env.TELEGRAM_USCITE_SECRET) {
+  //
+  // ⚠️ Il primo `if` non è ridondante ed è la riga più importante del
+  // file. Senza, una variabile d'ambiente dimenticata aprirebbe la
+  // porta invece di chiuderla: `undefined !== undefined` è FALSO,
+  // quindi una richiesta senza intestazione passerebbe il controllo
+  // proprio nel momento in cui il segreto non c'è. Un dimenticanza di
+  // configurazione deve rendere il bot muto, mai spalancato.
+  const atteso = process.env.TELEGRAM_USCITE_SECRET;
+
+  if (!atteso || req.headers["x-telegram-bot-api-secret-token"] !== atteso) {
     return res.status(401).send("no");
   }
 
