@@ -10,7 +10,8 @@
     "simula": "node --env-file=.env scripts/simula.js",
     "locale": "node --env-file=.env scripts/locale.js",
     "webhook": "node --env-file=.env scripts/webhook.js",
-    "chatid": "node --env-file=.env scripts/webhook.js --chatid"
+    "chatid": "node --env-file=.env scripts/webhook.js --chatid",
+    "prova-uscite": "node --env-file=.env scripts/prova-uscite.js"
   },
   "dependencies": {
     "fuse.js": "^7.3.0",
