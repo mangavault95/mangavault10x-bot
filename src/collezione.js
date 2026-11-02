@@ -89,7 +89,10 @@ export async function primaVolta(updateId) {
 // RICERCA DELLA SERIE
 // --------------------------------------------------
 
-const CAMPI = `"ID", "Titolo", "VolumiPosseduti", "VolumiItalia", "VolumiTotali",
+// "NumeriPosseduti" c'è dalla migrazione 022 del backend (02/11/2026):
+// QUALI volumi ci sono in casa, non solo quanti. Il conteggio resta e
+// lo tiene allineato un trigger, quindi `posseduti` è sempre giusto.
+const CAMPI = `"ID", "Titolo", "VolumiPosseduti", "NumeriPosseduti", "VolumiItalia", "VolumiTotali",
                "Costo", "PrezzoCopertina", "StatoSerie", "Edizione", "AnimeClickID"`;
 
 function normalizzaRiga(r) {
@@ -97,6 +100,7 @@ function normalizzaRiga(r) {
     id: Number(r.ID),
     titolo: String(r.Titolo).trim(),
     posseduti: Number(r.VolumiPosseduti || 0),
+    numeri: (r.NumeriPosseduti || []).map(Number),
     volumiItalia: r.VolumiItalia === null ? null : Number(r.VolumiItalia),
     volumiTotali: r.VolumiTotali === null ? null : Number(r.VolumiTotali),
     costo: r.Costo === null ? null : Number(r.Costo),
@@ -187,17 +191,31 @@ export async function trova(titolo, titoloIntero) {
 // REGISTRAZIONE
 // --------------------------------------------------
 
+/** Il primo numero che non c'è: in [1,2,3,4,5,11] è il 6, non il 12. */
+export function primoMancante(numeri) {
+  const presenti = new Set(numeri);
+  let n = 1;
+
+  while (presenti.has(n)) n += 1;
+
+  return n;
+}
+
+/** I numeri di una serie di blocchi: [{da:42,a:44}] → [42,43,44]. */
+function numeriDi(gruppi) {
+  return gruppi.flatMap((g) => Array.from({ length: g.a - g.da + 1 }, (_, i) => g.da + i));
+}
+
 /**
- * Scrive un acquisto e aggiorna il contatore dei volumi posseduti.
+ * Scrive un acquisto e mette i volumi comprati fra i posseduti.
  *
  * Le due scritture stanno in una transazione perché sono la stessa
- * informazione detta due volte: un acquisto senza il contatore
- * aggiornato è un volume che hai comprato e che il sito non ti conta.
+ * informazione detta due volte: un acquisto senza i posseduti
+ * aggiornati è un volume che hai comprato e che il sito non ti conta.
  *
- * Il contatore si INCREMENTA, non si porta al numero del volume: sono
- * due cose diverse. Chi possiede 41 volumi e compra il 45 ne ha 42,
- * non 45 — il buco esiste e va detto, non nascosto scrivendo un
- * numero più alto.
+ * Dal 02/11/2026 entra il NUMERO del volume, non un +1: chi ha 1-41 e
+ * compra il 45 ha 1-41 e 45, e il buco 42-44 resta scritto. Il
+ * conteggio lo ricava il trigger della 022.
  */
 export async function registra({ serie, gruppi, data, updateId, negozio = null, condizione = "nuovo" }) {
   const cliente = await connessione().connect();
@@ -220,14 +238,15 @@ export async function registra({ serie, gruppi, data, updateId, negozio = null, 
       scritti.push(rows[0]);
     }
 
-    const quanti = gruppi.reduce((s, g) => s + (g.a - g.da + 1), 0);
+    const comprati = numeriDi(gruppi);
+    const quanti = comprati.length;
 
     const { rows: aggiornata } = await cliente.query(
       `UPDATE "Manga"
-          SET "VolumiPosseduti" = COALESCE("VolumiPosseduti", 0) + $1
+          SET "NumeriPosseduti" = "NumeriPosseduti" || $1::int[]
         WHERE "ID" = $2
       RETURNING ${CAMPI}`,
-      [quanti, serie.id]
+      [comprati, serie.id]
     );
 
     await cliente.query("COMMIT");
@@ -271,12 +290,15 @@ export async function annullaUltimo() {
       [ultimo[0].telegram_update_id]
     );
 
+    // Escono proprio i numeri che quell'acquisto aveva portato.
     for (const r of righe) {
       await cliente.query(
         `UPDATE "Manga"
-            SET "VolumiPosseduti" = GREATEST(COALESCE("VolumiPosseduti", 0) - $1, 0)
-          WHERE "ID" = $2`,
-        [r.volume_a - r.volume_da + 1, r.manga_id]
+            SET "NumeriPosseduti" = ARRAY(
+              SELECT n FROM unnest("NumeriPosseduti") AS n WHERE n NOT BETWEEN $1 AND $2 ORDER BY n
+            )
+          WHERE "ID" = $3`,
+        [r.volume_da, r.volume_a, r.manga_id]
       );
     }
 

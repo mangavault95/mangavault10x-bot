@@ -180,14 +180,14 @@ function statoSerie(serie) {
 /**
  * Scrive l'acquisto e racconta cos'è successo.
  *
- * L'avviso sul buco non è un dettaglio estetico: il contatore dei
- * volumi posseduti è un numero, non un elenco, quindi comprare il 45
- * quando si è fermi al 41 lo porta a 42 ed è giusto così — ma se
- * nessuno lo dicesse, quella collezione risulterebbe "in pari" con
- * tre volumi mancanti dentro.
+ * L'avviso sul buco non è un dettaglio estetico: comprare il 45 quando
+ * si è fermi al 41 lascia fuori 42-44, e dirlo subito è il modo di non
+ * scoprirlo davanti allo scaffale. Dal 02/11/2026 il buco si legge
+ * dall'elenco vero dei posseduti, quindi è giusto anche per una serie
+ * sparsa: «ti manca ancora 6-10» e non un intervallo indovinato.
  */
 async function scrivi({ serie, volumi, prezzo, data, updateId }) {
-  const numeri = volumi ?? [serie.posseduti + 1];
+  const numeri = volumi ?? [db.primoMancante(serie.numeri)];
   const gruppi = blocchi(numeri);
   const quanti = numeri.length;
 
@@ -221,11 +221,16 @@ async function scrivi({ serie, volumi, prezzo, data, updateId }) {
   }
 
   const primo = Math.min(...numeri);
+  const presenti = new Set(esito.serie.numeri);
+  const buchi = [];
 
-  if (primo > serie.posseduti + 1) {
-    const da = serie.posseduti + 1;
-    const a = primo - 1;
-    righe.push(`⚠️ ti manca ancora ${da === a ? `il ${da}` : `dal ${da} al ${a}`}`);
+  for (let n = 1; n < primo; n += 1) if (!presenti.has(n)) buchi.push(n);
+
+  if (buchi.length) {
+    const gruppiBuchi = blocchi(buchi);
+    const solo = gruppiBuchi.length === 1 && gruppiBuchi[0].da === gruppiBuchi[0].a;
+
+    righe.push(`⚠️ ti manca ancora ${solo ? `il ${buchi[0]}` : elencaVolumi(gruppiBuchi)}`);
   }
 
   return { testo: righe.join("\n"), spesa: totale };
@@ -323,11 +328,11 @@ async function gestisciRiga({ chatId, riga, serie, updateId }) {
  * lascio il bottone, perché le ristampe e i regali esistono.
  */
 async function conferma({ chatId, serie, volumi, prezzo, giorno, updateId, forza = false }) {
-  const numeri = volumi ?? [serie.posseduti + 1];
+  const numeri = volumi ?? [db.primoMancante(serie.numeri)];
 
   if (!forza) {
     const registrati = await db.volumiRegistrati(serie.id);
-    const doppi = numeri.filter((v) => registrati.has(v) || v <= serie.posseduti);
+    const doppi = numeri.filter((v) => registrati.has(v) || serie.numeri.includes(v));
 
     if (doppi.length > 0) {
       const centesimi = prezzo === null || prezzo === undefined ? "" : Math.round(prezzo * 100);
