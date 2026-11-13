@@ -379,6 +379,11 @@ export async function arretrati() {
   // chi legge, non un fatto della serie. Qui conta la tua — questa è
   // la tua lista della spesa, e se l'altra lettrice ha mollato una
   // serie che tu segui i volumi ti mancano lo stesso.
+  //
+  // LE SMESSE INVECE NO (026, 13/11/2026). Droppare è «non la leggo»;
+  // smettere è «in casa non la compriamo più», detto apposta perché
+  // i suoi buchi smettano di comparire nella lista della spesa. Qui
+  // non c'è niente da decidere: la decisione è già presa.
   const { rows } = await connessione().query(
     `SELECT m."Titolo", m."VolumiPosseduti", m."VolumiItalia",
             COALESCE(m."VolumiItalia", m."VolumiTotali") AS traguardo,
@@ -390,6 +395,7 @@ export async function arretrati() {
             ) AS droppata
        FROM "Manga" m
       WHERE COALESCE(m."VolumiItalia", m."VolumiTotali") > COALESCE(m."VolumiPosseduti", 0)
+        AND m."SmessaIl" IS NULL
       ORDER BY (COALESCE(m."VolumiItalia", m."VolumiTotali") - COALESCE(m."VolumiPosseduti", 0)), m."Titolo"`
   );
 
