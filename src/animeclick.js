@@ -35,7 +35,14 @@ const INTESTAZIONI = {
   "Accept-Language": "it-IT,it;q=0.9"
 };
 
-const ATTESA = 20000;
+// Dieci secondi, non venti. La funzione su Vercel ne ha sessanta in
+// tutto e una serie nuova fa fino a quattro richieste qui più due ad
+// AniList, in fila: a venti l'una il conto sforava, Vercel chiudeva la
+// funzione a metà e chi aveva scritto restava a guardare «Sto
+// compilando la scheda…» senza sapere com'era finita. AnimeClick
+// risponde di norma in uno o due secondi: oltre i dieci è giù, e
+// conviene dirlo.
+const ATTESA = 10000;
 
 // --------------------------------------------------
 // Utilità di lettura dell'HTML

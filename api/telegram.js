@@ -484,6 +484,10 @@ async function comando(chatId, nome, argomento) {
     // "/mese 7" o "/mese 7/2025": il mese si scrive come si dice.
     const m = argomento.match(/^(\d{1,2})(?:[/-](\d{4}))?$/);
     if (m) {
+      if (Number(m[1]) < 1 || Number(m[1]) > 12) {
+        return invia(chatId, "🤔 Il mese va da 1 a 12: <code>/mese 7</code> oppure <code>/mese 7/2025</code>.");
+      }
+
       const anno = m[2] || oggi.slice(0, 4);
       giorno = `${anno}-${String(Number(m[1])).padStart(2, "0")}-01`;
     }

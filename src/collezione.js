@@ -496,6 +496,14 @@ export async function creaSerie(dati) {
   try {
     await cliente.query("BEGIN");
 
+    // Leggere il massimo e scrivere il successivo sono due passi: il
+    // lucchetto mette in fila chi sta scegliendo un identificativo
+    // (questa funzione e le due creazioni del sito), fino al COMMIT.
+    //
+    // ⚠️ gemella: stesso numero di `LUCCHETTO_ID_MANGA` in
+    // mangavault10x-backend/services/idManga.js.
+    await cliente.query("SELECT pg_advisory_xact_lock($1)", [7226501]);
+
     const { rows: prossimo } = await cliente.query(
       `SELECT COALESCE(MAX("ID"), 0) + 1 AS id FROM "Manga"`
     );

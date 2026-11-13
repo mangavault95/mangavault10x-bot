@@ -56,7 +56,7 @@ export async function copertinaEGeneri(titoli, anno) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: QUERY, variables: { search: titolo } }),
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(6000)
       });
 
       if (!risposta.ok) continue;

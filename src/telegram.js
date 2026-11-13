@@ -16,12 +16,22 @@ function indirizzo(metodo, gettone) {
 }
 
 async function chiama(metodo, corpo, gettone) {
-  const risposta = await fetch(indirizzo(metodo, gettone), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(corpo),
-    signal: AbortSignal.timeout(TIMEOUT)
-  });
+  let risposta;
+
+  try {
+    risposta = await fetch(indirizzo(metodo, gettone), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout(TIMEOUT)
+    });
+  } catch (errore) {
+    // Vale anche per la rete, non solo per un rifiuto: una chiamata
+    // scaduta dopo che l'acquisto è già scritto non deve diventare un
+    // errore dell'intera richiesta (vedi sotto).
+    console.error(`Telegram ${metodo}:`, errore.message);
+    return null;
+  }
 
   const json = await risposta.json().catch(() => ({}));
 
@@ -36,6 +46,62 @@ async function chiama(metodo, corpo, gettone) {
   return json.result || null;
 }
 
+// Telegram rifiuta un messaggio più lungo di 4096 caratteri, e lo
+// rifiuta per intero: un /mese con settanta acquisti non arrivava
+// affatto. Il margine è per non contare al carattere.
+const LUNGHEZZA_MASSIMA = 3900;
+
+/**
+ * Un testo lungo in più pezzi, tagliato a fine riga.
+ *
+ * I messaggi del bot sono elenchi, una voce per riga, e ogni riga
+ * chiude i tag che apre: tagliando fra una riga e l'altra nessun pezzo
+ * resta con un `<b>` a metà.
+ */
+export function spezza(testo, massimo = LUNGHEZZA_MASSIMA) {
+  const pezzi = [];
+  let corrente = "";
+
+  for (const riga of String(testo).split("\n")) {
+    // Una riga sola più lunga del tetto non dovrebbe esistere; se
+    // esiste si taglia dov'è, meglio storta che non recapitata.
+    const fette = riga.length > massimo ? riga.match(new RegExp(`.{1,${massimo}}`, "gs")) : [riga];
+
+    for (const fetta of fette) {
+      if (corrente && corrente.length + 1 + fetta.length > massimo) {
+        pezzi.push(corrente);
+        corrente = fetta;
+      } else {
+        corrente = corrente ? `${corrente}\n${fetta}` : fetta;
+      }
+    }
+  }
+
+  if (corrente || pezzi.length === 0) pezzi.push(corrente);
+
+  return pezzi;
+}
+
+/**
+ * `callback_data` ha un tetto di 64 byte, e Telegram quando un bottone
+ * lo supera rifiuta TUTTO il messaggio: la domanda non arrivava e chi
+ * aveva scritto restava senza risposta. Meglio la domanda senza
+ * bottoni e una riga che dice cosa fare.
+ */
+function bottoniCheEntrano(testo, bottoni) {
+  if (!bottoni) return { testo, bottoni };
+
+  const misura = (t) => new TextEncoder().encode(String(t ?? "")).length;
+  const sfora = bottoni.some((riga) => riga.some((b) => misura(b.callback_data) > 64));
+
+  if (!sfora) return { testo, bottoni };
+
+  return {
+    testo: `${testo}\n\n⚠️ Sono troppi volumi per chiedertelo coi bottoni: rimandali in due o più messaggi.`,
+    bottoni: null
+  };
+}
+
 /** Il testo va in HTML: quello che arriva da fuori va disinnescato. */
 export function esc(testo) {
   return String(testo ?? "")
@@ -44,21 +110,35 @@ export function esc(testo) {
     .replace(/>/g, "&gt;");
 }
 
-export function invia(chatId, testo, { bottoni = null, anteprima = false, gettone = null } = {}) {
-  return chiama(
-    "sendMessage",
-    {
-      chat_id: chatId,
-      text: testo,
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: !anteprima },
-      ...(bottoni ? { reply_markup: { inline_keyboard: bottoni } } : {})
-    },
-    gettone
-  );
+export async function invia(chatId, testoGrezzo, { bottoni: bottoniChiesti = null, anteprima = false, gettone = null } = {}) {
+  const { testo, bottoni } = bottoniCheEntrano(testoGrezzo, bottoniChiesti);
+  const pezzi = spezza(testo);
+  let ultimo = null;
+
+  // In ordine, uno alla volta: mandati insieme arriverebbero mescolati.
+  // I bottoni vanno sotto l'ultimo pezzo, dove finisce chi legge.
+  for (let i = 0; i < pezzi.length; i += 1) {
+    const inFondo = i === pezzi.length - 1;
+
+    ultimo = await chiama(
+      "sendMessage",
+      {
+        chat_id: chatId,
+        text: pezzi[i],
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: !anteprima },
+        ...(bottoni && inFondo ? { reply_markup: { inline_keyboard: bottoni } } : {})
+      },
+      gettone
+    );
+  }
+
+  return ultimo;
 }
 
-export function modifica(chatId, messaggioId, testo, { bottoni = null, gettone = null } = {}) {
+export function modifica(chatId, messaggioId, testoGrezzo, { bottoni: bottoniChiesti = null, gettone = null } = {}) {
+  const { testo, bottoni } = bottoniCheEntrano(testoGrezzo, bottoniChiesti);
+
   return chiama(
     "editMessageText",
     {

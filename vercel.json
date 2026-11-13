@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/telegram.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "api/uscite.js": {
       "maxDuration": 15
