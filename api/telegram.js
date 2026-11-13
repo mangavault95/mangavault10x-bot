@@ -525,9 +525,11 @@ async function comando(chatId, nome, argomento) {
       .slice(0, 25)
       .map(
         (s) =>
-          `• ${esc(s.titolo)} — hai ${s.posseduti}, ` +
-          `${s.inItalia ? "usciti" : "in tutto"} ${s.usciti} ` +
-          `(<b>${s.usciti - s.posseduti}</b>)` +
+          // I numeri, non il conto: davanti allo scaffale serve sapere
+          // QUALI prendere. Accanto resta su quanti, perché «usciti»
+          // e «in tutto» non sono la stessa promessa.
+          `• ${esc(s.titolo)} — <b>${elencaVolumi(blocchi(s.mancanti))}</b> ` +
+          `(${s.mancanti.length} su ${s.usciti} ${s.inItalia ? "usciti" : "in tutto"})` +
           // Una serie mollata resta in elenco — mancanti vuol dire
           // quali volumi mancano — ma segnata, o davanti allo scaffale
           // ti ritroveresti a comprare il seguito di una che avevi
@@ -535,7 +537,7 @@ async function comando(chatId, nome, argomento) {
           (s.droppata ? " · <i>droppata</i>" : "")
       );
 
-    const quanti = serie.reduce((s, x) => s + (x.usciti - x.posseduti), 0);
+    const quanti = serie.reduce((s, x) => s + x.mancanti.length, 0);
 
     return invia(
       chatId,

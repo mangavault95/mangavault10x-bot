@@ -428,7 +428,7 @@ export async function arretrati() {
   // i suoi buchi smettano di comparire nella lista della spesa. Qui
   // non c'è niente da decidere: la decisione è già presa.
   const { rows } = await connessione().query(
-    `SELECT m."Titolo", m."VolumiPosseduti", m."VolumiItalia",
+    `SELECT m."Titolo", m."VolumiPosseduti", m."NumeriPosseduti", m."VolumiItalia",
             COALESCE(m."VolumiItalia", m."VolumiTotali") AS traguardo,
             EXISTS (
               SELECT 1
@@ -437,18 +437,35 @@ export async function arretrati() {
                WHERE d.manga_id = m."ID" AND u.proprietario
             ) AS droppata
        FROM "Manga" m
-      WHERE COALESCE(m."VolumiItalia", m."VolumiTotali") > COALESCE(m."VolumiPosseduti", 0)
-        AND m."SmessaIl" IS NULL
-      ORDER BY (COALESCE(m."VolumiItalia", m."VolumiTotali") - COALESCE(m."VolumiPosseduti", 0)), m."Titolo"`
+      WHERE COALESCE(m."VolumiItalia", m."VolumiTotali") > 0
+        AND m."SmessaIl" IS NULL`
   );
 
-  return rows.map((r) => ({
-    titolo: String(r.Titolo).trim(),
-    posseduti: Number(r.VolumiPosseduti || 0),
-    usciti: Number(r.traguardo),
-    droppata: Boolean(r.droppata),
-    inItalia: r.VolumiItalia !== null
-  }));
+  // QUALI mancano, non quanti. Fare «usciti meno posseduti» sbaglia
+  // nei due casi che contano: chi ha 1-5 e l'11 di tredici si sentiva
+  // dire «te ne mancano 7» senza sapere che sono 6-10, 12 e 13; e chi
+  // ha un numero oltre quelli usciti in Italia (un'anteprima, un
+  // volume estero) si vedeva scontare un buco che invece c'è. Dalla
+  // 022 i numeri posseduti sono scritti uno per uno: si legge da lì.
+  return rows
+    .map((r) => {
+      const usciti = Math.min(Number(r.traguardo), 1000);
+      const avuti = new Set((r.NumeriPosseduti || []).map(Number));
+      const mancanti = [];
+
+      for (let n = 1; n <= usciti; n += 1) if (!avuti.has(n)) mancanti.push(n);
+
+      return {
+        titolo: String(r.Titolo).trim(),
+        posseduti: Number(r.VolumiPosseduti || 0),
+        usciti,
+        mancanti,
+        droppata: Boolean(r.droppata),
+        inItalia: r.VolumiItalia !== null
+      };
+    })
+    .filter((s) => s.mancanti.length > 0)
+    .sort((a, b) => a.mancanti.length - b.mancanti.length || a.titolo.localeCompare(b.titolo, "it"));
 }
 
 /**
