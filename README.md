@@ -10,14 +10,18 @@ vagabond 12 8,90 ieri
 
 Ogni riga diventa una riga nella tabella `acquisti` (quella di
 `mangavault10x-backend/sql/001_fondamenta.sql`, che esisteva già e non
-aveva mai scritto nessuno) e alza il contatore `"VolumiPosseduti"`
-della serie. Da lì `/mese` sa dire quanto hai speso davvero, invece
-della stima `Costo × volumi` che fa il sito.
+aveva mai scritto nessuno) e mette il numero del volume fra i
+`"NumeriPosseduti"` della serie (il conteggio `"VolumiPosseduti"` lo
+ricava un trigger del database). Da lì `/mese` sa dire quanto hai speso
+davvero, invece della stima `Costo × volumi` che fa il sito, e
+`/mancanti` quali numeri ti mancano.
 
 ## Com'è fatto
 
-Una funzione sola su Vercel (`api/telegram.js`) che parla direttamente
-a Supabase. Non passa dal backend su Render di proposito: quello
+Due funzioni su Vercel, una per bot, che parlano direttamente a
+Supabase: `api/telegram.js` è il bot degli acquisti, `api/uscite.js`
+quello delle uscite (riceve `/start` e fa scegliere il proprio nome; i
+messaggi sulle uscite li manda il backend). Non passa dal backend su Render di proposito: quello
 (piano gratuito) si addormenta dopo un quarto d'ora, e il primo
 messaggio della giornata aspetterebbe il risveglio. Qui la risposta
 arriva subito.
@@ -30,6 +34,7 @@ arriva subito.
 | `src/animeclick.js` | ricerca e scheda, per le serie nuove |
 | `src/anilist.js` | solo copertina e generi |
 | `src/telegram.js` | le tre chiamate all'API di Telegram |
+| `api/uscite.js`, `src/uscite.js` | il secondo bot: chi sei, per gli avvisi delle uscite |
 
 ## Come si mette in piedi
 
@@ -43,9 +48,10 @@ committata da nessuna parte.
 tabellina contro i doppioni e una colonna su `acquisti`. Non tocca
 niente di quello che c'è.
 
-**3. Il progetto su Vercel.** Repo nuovo su GitHub (`mangavault10x-bot`),
-poi su Vercel *Add New → Project* e lo importi. Non c'è niente da
-compilare: Vercel riconosce `api/` da solo.
+**3. Il progetto su Vercel.** Si pubblica **a mano**, dalla cartella:
+`vercel --prod`. Un push su GitHub non pubblica niente (vedi
+`.vercelignore` per il perché e per cosa resta fuori dal caricamento).
+Non c'è niente da compilare: Vercel riconosce `api/` da solo.
 
 **4. Le variabili d'ambiente** (Vercel → Settings → Environment Variables):
 
@@ -55,6 +61,12 @@ compilare: Vercel riconosce `api/` da solo.
 | `TELEGRAM_SECRET_TOKEN` | `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"` |
 | `TELEGRAM_CHAT_ID` | punto 5 qui sotto |
 | `DATABASE_URL` | la stessa del backend — quella del **pooler** (porta 6543) |
+| `TELEGRAM_USCITE_TOKEN`, `TELEGRAM_USCITE_SECRET` | il secondo bot: token da @BotFather e un segreto generato come sopra |
+| `SITO_URL` | l'indirizzo del sito, per i link nei messaggi |
+
+Se `TELEGRAM_SECRET_TOKEN` o `TELEGRAM_CHAT_ID` mancano il bot degli
+acquisti risponde 401 a tutti: una variabile dimenticata lo rende muto,
+non aperto.
 
 **5. Il tuo identificativo.** Copia `.env.example` in `.env`, riempi
 `TELEGRAM_BOT_TOKEN`, scrivi un messaggio qualsiasi al bot e poi:
@@ -112,9 +124,9 @@ Telegram consegna i messaggi là e questo comando non vede niente —
   `Costo` della serie — e il messaggio dice quale dei due.
 - **Un numero intero è un volume, non un prezzo.** Per scrivere un
   prezzo tondo serve l'euro: `berserk 42 7€`.
-- **Il contatore si incrementa, non si sposta.** Chi ha 41 volumi e
-  compra il 45 ne possiede 42, non 45: il bot lo scrive così e
-  avvisa che in mezzo manca qualcosa.
+- **Entra il numero del volume, non un +1.** Chi ha 1-41 e compra il
+  45 ha 1-41 e 45: il bot lo scrive così e avvisa che in mezzo manca
+  qualcosa.
 - **Le serie nuove** vengono da AnimeClick (trama in italiano,
   editore, stato) più AniList (copertina grande e generi in inglese,
   come tutti gli altri in collezione). Viene salvato anche
@@ -124,4 +136,10 @@ Telegram consegna i messaggi là e questo comando non vede niente —
   `animeclick.it/manga/9607/berserk 1 6,90`. Capita con le serie che
   AnimeClick elenca sotto il titolo giapponese.
 - **`/annulla` disfa l'ultimo messaggio**, non l'ultima riga: se ne
-  hai mandate tre insieme le toglie tutte e tre.
+  hai mandate tre insieme le toglie tutte e tre. Toglie dai posseduti
+  solo i volumi che quel messaggio aveva portato: un doppione
+  registrato apposta non fa sparire la copia che c'era già.
+- **Le prove**: `npm test` (o `npm run prova`) gira senza rete né
+  database e parte da sola a ogni push; `verifica`, `simula` e
+  `prova-uscite` parlano col database vero dentro una transazione che
+  alla fine si annulla.

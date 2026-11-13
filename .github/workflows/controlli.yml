@@ -1,0 +1,30 @@
+name: Controlli
+# A ogni push: il codice si legge senza errori di sintassi e le prove
+# che non hanno bisogno né della rete né del database passano
+# (scripts/prova.js: la lettura dei messaggi, i blocchi, i prezzi).
+#
+# `verifica`, `simula` e `prova-uscite` parlano col database vero e
+# restano da lanciare a mano: qui non ci sono segreti.
+on:
+  push:
+  pull_request:
+
+jobs:
+  controlli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sintassi
+        run: |
+          for f in api/*.js src/*.js scripts/*.js; do
+            node --check "$f"
+          done
+      - name: Prove
+        run: npm test
+      - name: Dipendenze con falle note
+        run: npm audit --omit=dev --audit-level=high

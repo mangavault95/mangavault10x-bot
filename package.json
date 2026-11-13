@@ -11,7 +11,8 @@
     "locale": "node --env-file=.env scripts/locale.js",
     "webhook": "node --env-file=.env scripts/webhook.js",
     "chatid": "node --env-file=.env scripts/webhook.js --chatid",
-    "prova-uscite": "node --env-file=.env scripts/prova-uscite.js"
+    "prova-uscite": "node --env-file=.env scripts/prova-uscite.js",
+    "test": "node scripts/prova.js"
   },
   "dependencies": {
     "fuse.js": "^7.3.0",
