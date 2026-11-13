@@ -701,7 +701,22 @@ export default async function handler(req, res) {
   // Il segreto lo manda Telegram in un'intestazione, e l'ha ricevuto
   // da noi quando abbiamo registrato il webhook: senza, chiunque
   // conoscesse l'indirizzo potrebbe scrivere sul database.
-  if (req.headers["x-telegram-bot-api-secret-token"] !== process.env.TELEGRAM_SECRET_TOKEN) {
+  //
+  // ⚠️ Il controllo «c'è?» non è ridondante: `undefined !== undefined`
+  // è FALSO, quindi senza di lui una variabile d'ambiente dimenticata
+  // (un progetto Vercel ricollegato, una pubblicazione di anteprima)
+  // lascerebbe passare proprio le richieste senza intestazione. Una
+  // dimenticanza deve rendere il bot muto, mai spalancato — la stessa
+  // regola di api/uscite.js.
+  const atteso = process.env.TELEGRAM_SECRET_TOKEN;
+  const chatAmmessa = process.env.TELEGRAM_CHAT_ID;
+
+  if (!atteso || !chatAmmessa) {
+    console.error("configurazione incompleta: TELEGRAM_SECRET_TOKEN o TELEGRAM_CHAT_ID mancano");
+    return res.status(401).send("no");
+  }
+
+  if (req.headers["x-telegram-bot-api-secret-token"] !== atteso) {
     return res.status(401).send("no");
   }
 
@@ -712,7 +727,7 @@ export default async function handler(req, res) {
 
   // Un bot su Telegram lo trova chiunque conosca il nome: la
   // collezione la tocca una persona sola.
-  if (String(chatId) !== String(process.env.TELEGRAM_CHAT_ID)) {
+  if (chatId == null || String(chatId) !== String(chatAmmessa)) {
     console.warn("chat non autorizzata:", chatId);
     return res.status(200).send("ok");
   }

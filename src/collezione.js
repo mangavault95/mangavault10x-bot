@@ -30,6 +30,11 @@ function connessione() {
       max: 1,
       idleTimeoutMillis: 10000
     });
+
+    // Una connessione ferma che il pooler chiude dal suo lato emette
+    // `error` sul pool: senza nessuno in ascolto l'istanza cadrebbe, e
+    // il messaggio successivo pagherebbe una partenza a freddo.
+    pool.on("error", (errore) => console.error("pool:", errore.message));
   }
 
   return pool;
@@ -207,6 +212,40 @@ function numeriDi(gruppi) {
 }
 
 /**
+ * I numeri di un blocco che in casa c'erano già prima dell'acquisto.
+ *
+ * Si scrivono accanto all'acquisto (migrazione 027 del backend) perché
+ * /annulla deve togliere solo quello che l'acquisto ha PORTATO: un
+ * doppione registrato con «Registralo lo stesso» parla di un volume
+ * che c'era, e disfarlo non deve far sparire anche la copia di prima.
+ *
+ * ⚠️ gemella: `giaInCasa` in mangavault10x-backend/services/acquisti.js.
+ */
+export function giaInCasa(gruppo, avevo) {
+  const numeri = [];
+
+  for (let n = gruppo.da; n <= gruppo.a; n += 1) if (avevo.has(n)) numeri.push(n);
+
+  return numeri;
+}
+
+/**
+ * Toglie dai posseduti i numeri di un acquisto annullato, tranne quelli
+ * che c'erano già ($4). Per gli acquisti di prima della 027 la colonna
+ * è vuota e si toglie tutto l'intervallo, come si è sempre fatto.
+ *
+ * ⚠️ gemella: `TOGLI_NUMERI` in mangavault10x-backend/services/acquisti.js.
+ */
+const TOGLI_NUMERI = `
+  UPDATE "Manga"
+     SET "NumeriPosseduti" = ARRAY(
+           SELECT n FROM unnest("NumeriPosseduti") AS n
+            WHERE NOT (n BETWEEN $1 AND $2 AND n <> ALL($4::int[]))
+            ORDER BY n
+         )
+   WHERE "ID" = $3`;
+
+/**
  * Scrive un acquisto e mette i volumi comprati fra i posseduti.
  *
  * Le due scritture stanno in una transazione perché sono la stessa
@@ -224,15 +263,25 @@ export async function registra({ serie, gruppi, data, updateId, negozio = null, 
   try {
     await cliente.query("BEGIN");
 
+    // La riga si blocca prima di leggerla: è da qui che si sa cosa
+    // c'era già in casa, e un acquisto dal sito nello stesso istante
+    // non deve cambiarlo fra la lettura e la scrittura. (Il backend fa
+    // lo stesso in services/acquisti.js.)
+    const { rows: prima } = await cliente.query(
+      `SELECT "NumeriPosseduti" FROM "Manga" WHERE "ID" = $1 FOR UPDATE`,
+      [serie.id]
+    );
+
+    const avevo = new Set((prima[0]?.NumeriPosseduti || []).map(Number));
     const scritti = [];
 
     for (const g of gruppi) {
       const { rows } = await cliente.query(
         `INSERT INTO acquisti
-           (manga_id, volume_da, volume_a, prezzo, data_acquisto, condizione, negozio, telegram_update_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (manga_id, volume_da, volume_a, prezzo, data_acquisto, condizione, negozio, telegram_update_id, gia_posseduti)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::int[])
          RETURNING id, volume_da, volume_a, prezzo, data_acquisto`,
-        [serie.id, g.da, g.a, g.prezzo, giorno, condizione, negozio, updateId]
+        [serie.id, g.da, g.a, g.prezzo, giorno, condizione, negozio, updateId, giaInCasa(g, avevo)]
       );
 
       scritti.push(rows[0]);
@@ -286,20 +335,14 @@ export async function annullaUltimo() {
       `DELETE FROM acquisti a
         USING "Manga" m
         WHERE a.telegram_update_id = $1 AND m."ID" = a.manga_id
-    RETURNING a.manga_id, a.volume_da, a.volume_a, a.prezzo, m."Titolo"`,
+    RETURNING a.manga_id, a.volume_da, a.volume_a, a.prezzo, a.gia_posseduti, m."Titolo"`,
       [ultimo[0].telegram_update_id]
     );
 
-    // Escono proprio i numeri che quell'acquisto aveva portato.
+    // Escono proprio i numeri che quell'acquisto aveva portato: quelli
+    // che c'erano già restano dove sono.
     for (const r of righe) {
-      await cliente.query(
-        `UPDATE "Manga"
-            SET "NumeriPosseduti" = ARRAY(
-              SELECT n FROM unnest("NumeriPosseduti") AS n WHERE n NOT BETWEEN $1 AND $2 ORDER BY n
-            )
-          WHERE "ID" = $3`,
-        [r.volume_da, r.volume_a, r.manga_id]
-      );
+      await cliente.query(TOGLI_NUMERI, [r.volume_da, r.volume_a, r.manga_id, r.gia_posseduti || []]);
     }
 
     await cliente.query("COMMIT");
