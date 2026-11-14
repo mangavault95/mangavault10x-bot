@@ -12,7 +12,8 @@
     "webhook": "node --env-file=.env scripts/webhook.js",
     "chatid": "node --env-file=.env scripts/webhook.js --chatid",
     "prova-uscite": "node --env-file=.env scripts/prova-uscite.js",
-    "test": "node scripts/prova.js"
+    "test": "node scripts/prova.js && node scripts/prova-parser.js",
+    "prova-parser": "node scripts/prova-parser.js"
   },
   "dependencies": {
     "fuse.js": "^7.3.0",

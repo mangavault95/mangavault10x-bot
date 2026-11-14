@@ -65,9 +65,22 @@ const ENTITA = {
   "&euro;": "€"
 };
 
+// Un'entità numerica diventa il suo carattere; fuori dall'intervallo
+// di Unicode (o 0) diventa uno spazio invece di far lanciare
+// `fromCodePoint` nel mezzo di un messaggio.
+function entitaNumerica(codice) {
+  return Number.isInteger(codice) && codice > 0 && codice <= 0x10ffff ? String.fromCodePoint(codice) : " ";
+}
+
 function decodifica(testo) {
   return String(testo || "")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    // Decimali (`&#039;`) ed esadecimali (`&#x27;`): lo stesso apostrofo
+    // si scrive in tutti e due i modi, e il secondo diventava uno
+    // spazio che spezzava la parola ("Takopi s").
+    //
+    // ⚠️ gemella: `testoDi` in mangavault10x-backend/services/providers/animeclick.js.
+    .replace(/&#(\d+);/g, (_, n) => entitaNumerica(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => entitaNumerica(parseInt(n, 16)))
     .replace(/&[a-z#0-9]+;/gi, (e) => ENTITA[e.toLowerCase()] ?? " ");
 }
 
@@ -352,6 +365,10 @@ export async function prezziVolumi(animeClickId, { edizione = null } = {}) {
 // di essa lo stato resta vuoto, e una scheda senza stato non entra
 // nel controllo mensile né nei filtri del sito.
 const STATO = [
+  // «Non concluso» contiene «conclus»: senza questa riga in testa la
+  // serie ancora in uscita si registrava come finita. Il backend lo
+  // distingueva già (`leggiStatoItaliano`).
+  [/\bnon\s+(conclus|complet|terminat|finit)/i, "in_corso"],
   [/in corso/i, "in_corso"],
   [/(complet|conclus|finit)/i, "conclusa"],
   [/(inedit|annunciat|non pubblicat)/i, "inedita"],
