@@ -182,7 +182,14 @@ export function interpreta(messaggio, oggi = new Date()) {
 export function blocchi(volumi) {
   const gruppi = [];
 
-  for (const v of volumi) {
+  // Ordinati e senza doppioni, qualunque cosa arrivi: «42 42» non deve
+  // diventare due righe di acquisto per lo stesso volume. Oggi chi chiama
+  // (`interpretaRiga`) lo fa già, ma una regola che dipende da chi la
+  // chiama è una regola che qualcuno prima o poi rompe.
+  //
+  // ⚠️ gemella: `blocchi` in mangavault10x-backend/services/acquisti.js.
+  // I casi condivisi stanno in fixtures/acquisti/casi.json.
+  for (const v of [...new Set(volumi)].sort((a, b) => a - b)) {
     const ultimo = gruppi[gruppi.length - 1];
 
     if (ultimo && v === ultimo.a + 1) ultimo.a = v;
@@ -196,8 +203,10 @@ export function blocchi(volumi) {
  * Il prezzo scritto è il totale della riga, non il prezzo unitario:
  * è quello che si legge sullo scontrino. Va diviso fra i blocchi in
  * proporzione ai volumi, e i centesimi che avanzano dalla divisione
- * finiscono sul primo — così la somma dei pezzi torna sempre uguale
- * al totale battuto.
+ * finiscono sull'ULTIMO blocco — così la somma dei pezzi torna sempre
+ * uguale al totale battuto.
+ *
+ * ⚠️ gemella: `ripartisci` in mangavault10x-backend/services/acquisti.js.
  */
 export function ripartisci(totale, gruppi) {
   const volumiTotali = gruppi.reduce((s, g) => s + (g.a - g.da + 1), 0);

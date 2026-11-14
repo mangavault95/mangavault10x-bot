@@ -236,7 +236,7 @@ export function giaInCasa(gruppo, avevo) {
  *
  * ⚠️ gemella: `TOGLI_NUMERI` in mangavault10x-backend/services/acquisti.js.
  */
-const TOGLI_NUMERI = `
+export const TOGLI_NUMERI = `
   UPDATE "Manga"
      SET "NumeriPosseduti" = ARRAY(
            SELECT n FROM unnest("NumeriPosseduti") AS n
