@@ -142,39 +142,64 @@ try {
     from: { first_name: "Sara", username: "sara" }
   });
 
+  const { rows: [prima] } = await cliente.query(
+    `SELECT telegram_chat_id FROM utenti WHERE id = $1`,
+    [idScelto]
+  );
+
+  esito("toccare il nome NON collega: chiede", prima.telegram_chat_id === null);
+
+  const alCapo = mandati.find(
+    (m) => m.metodo === "sendMessage" && String(m.chat_id) === "900000999"
+  );
+
+  esito("il proprietario riceve la richiesta", Boolean(alCapo), alCapo?.text?.split("\n")[0]);
+
+  esito(
+    "con Approva e Rifiuta",
+    alCapo?.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data === `ok:${idScelto}:${CHAT_A}` &&
+      alCapo?.reply_markup?.inline_keyboard?.[0]?.[1]?.callback_data === `no:${idScelto}:${CHAT_A}`
+  );
+
+  esito("la richiesta dice chi è su Telegram", alCapo?.text?.includes("@sara"));
+
+  mandati.length = 0;
+
+  await _interni.gestisciBottone(900000999, {
+    id: "cb1b",
+    data: `ok:${idScelto}:${CHAT_A}`,
+    message: { message_id: 11 },
+    from: { first_name: "Capo" }
+  });
+
   const { rows: [collegata] } = await cliente.query(
     `SELECT nickname, telegram_chat_id FROM utenti WHERE id = $1`,
     [idScelto]
   );
 
   esito(
-    "la chat finisce sulla riga giusta",
+    "dopo Approva la chat finisce sulla riga giusta",
     String(collegata.telegram_chat_id) === String(CHAT_A),
     `${collegata.nickname} → ${collegata.telegram_chat_id}`
   );
 
-  const conferma = mandati.find((m) => m.metodo === "editMessageText");
+  const conferma = mandati.find(
+    (m) => m.metodo === "sendMessage" && String(m.chat_id) === String(CHAT_A)
+  );
 
-  esito("la conferma dice il nome", conferma?.text?.includes(collegata.nickname));
+  esito("la conferma alla persona dice il nome", conferma?.text?.includes(collegata.nickname));
 
   esito(
-    "la conferma dice quante serie",
+    "e quante serie",
     /\d+<\/b> serie|videoteca non c'è ancora niente/.test(conferma?.text || ""),
     "è quello che prova che ha guardato la videoteca giusta"
   );
 
-  const alCapo = mandati.find(
-    (m) => m.metodo === "sendMessage" && String(m.chat_id) === "900000999"
-  );
-
-  esito("il proprietario viene avvertito", Boolean(alCapo), alCapo?.text?.split("\n")[0]);
-
   esito(
-    "e ha il bottone per disfare",
-    alCapo?.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data === `via:${idScelto}`
+    "il proprietario ha il bottone per ripensarci",
+    mandati.find((m) => m.metodo === "editMessageText" && String(m.chat_id) === "900000999")
+      ?.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data === `via:${idScelto}`
   );
-
-  esito("l'avviso dice chi è su Telegram", alCapo?.text?.includes("@sara"));
 
   // ---- nessuno può soffiare un nome già preso ----
 
@@ -202,7 +227,7 @@ try {
 
   esito(
     "e glielo dice",
-    /già|preso/i.test(mandati.find((m) => m.metodo === "editMessageText")?.text || "")
+    /disponibile/i.test(mandati.find((m) => m.metodo === "editMessageText")?.text || "")
   );
 
   mandati.length = 0;
@@ -279,6 +304,13 @@ try {
     data: scelto.callback_data,
     message: { message_id: 40 },
     from: { first_name: "Sara" }
+  });
+
+  await _interni.gestisciBottone(900000999, {
+    id: "cb5b",
+    data: `ok:${idScelto}:${CHAT_A}`,
+    message: { message_id: 41 },
+    from: { first_name: "Capo" }
   });
 
   mandati.length = 0;

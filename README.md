@@ -20,7 +20,7 @@ davvero, invece della stima `Costo × volumi` che fa il sito, e
 
 Due funzioni su Vercel, una per bot, che parlano direttamente a
 Supabase: `api/telegram.js` è il bot degli acquisti, `api/uscite.js`
-quello delle uscite (riceve `/start` e fa scegliere il proprio nome; i
+quello delle uscite (riceve `/start`, e chi vuole collegarsi chiede un nome libero: **il proprietario deve approvare**; i
 messaggi sulle uscite li manda il backend). Non passa dal backend su Render di proposito: quello
 (piano gratuito) si addormenta dopo un quarto d'ora, e il primo
 messaggio della giornata aspetterebbe il risveglio. Qui la risposta
@@ -62,6 +62,7 @@ Non c'è niente da compilare: Vercel riconosce `api/` da solo.
 | `TELEGRAM_CHAT_ID` | punto 5 qui sotto |
 | `DATABASE_URL` | la stessa del backend — quella del **pooler** (porta 6543) |
 | `TELEGRAM_USCITE_TOKEN`, `TELEGRAM_USCITE_SECRET` | il secondo bot: token da @BotFather e un segreto generato come sopra |
+| `TELEGRAM_USCITE_CODICE_PROPRIETARIO` | facoltativa: il codice con cui il proprietario si collega al secondo bot (`/start CODICE`), almeno 16 caratteri. Senza, il proprietario si collega solo dallo script del backend |
 | `SITO_URL` | l'indirizzo del sito, per i link nei messaggi |
 
 Se `TELEGRAM_SECRET_TOKEN` o `TELEGRAM_CHAT_ID` mancano il bot degli

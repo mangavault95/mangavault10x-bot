@@ -60,27 +60,43 @@ export async function primaVolta(updateId) {
 // --------------------------------------------------
 
 /**
- * I lettori del sito, con l'indicazione di chi ha già una chat.
+ * I nomi che un estraneo può chiedere: persone ATTIVE, non il proprietario, ancora
+ * senza una chat.
  *
- * Solo gli `attivo`: chi ha chiesto di entrare e non è ancora stato
- * accettato non è una persona del sito, e non deve comparire in un
- * elenco che chiunque apra il bot può vedere.
+ * ⚠️ Tre condizioni, tutte e tre necessarie:
+ *  - `attivo`: chi ha chiesto di entrare e non è ancora stato accettato non è una
+ *    persona del sito, e non deve comparire in un elenco che chiunque apra il bot vede;
+ *  - NON il proprietario: il suo collegamento non si sceglie da un bottone, perché chi
+ *    lo prende riceve gli avvisi e il riepilogo di tutta la casa (e può scollegare gli
+ *    altri). Si fa solo col codice, vedi `collegaProprietario`;
+ *  - senza chat: chi è già collegato non si può soffiare.
  */
-export async function lettori() {
+export async function nomiLiberi() {
   const { rows } = await connessione().query(
-    `SELECT id, nickname, proprietario, (telegram_chat_id IS NOT NULL) AS collegato
+    `SELECT id, nickname
        FROM utenti
-      WHERE stato = 'attivo'
-      ORDER BY proprietario DESC, id`
+      WHERE stato = 'attivo' AND NOT proprietario AND telegram_chat_id IS NULL
+      ORDER BY id`
   );
 
   return rows;
 }
 
+/** Il nome di una persona che si può ancora chiedere, o `null` (stesse regole di `nomiLiberi`). */
+export async function daCollegare(utenteId) {
+  const { rows } = await connessione().query(
+    `SELECT nickname FROM utenti
+      WHERE id = $1 AND stato = 'attivo' AND NOT proprietario AND telegram_chat_id IS NULL`,
+    [utenteId]
+  );
+
+  return rows[0]?.nickname || null;
+}
+
 /** Chi è questa chat, se è già di qualcuno. */
 export async function chiE(chatId) {
   const { rows } = await connessione().query(
-    `SELECT id, nickname FROM utenti WHERE telegram_chat_id = $1`,
+    `SELECT id, nickname, proprietario FROM utenti WHERE telegram_chat_id = $1`,
     [chatId]
   );
 
@@ -88,23 +104,45 @@ export async function chiE(chatId) {
 }
 
 /**
- * Collega una persona a questa chat.
+ * Collega una persona a questa chat. Si chiama SOLO dopo che il proprietario ha toccato
+ * «Approva»: da qui non c'è nessun altro modo di arrivarci.
  *
- * ⚠️ `WHERE telegram_chat_id IS NULL` non è prudenza inutile: fra il
- * momento in cui i bottoni sono stati disegnati e quello in cui uno
- * viene toccato possono passare giorni, e in mezzo quel nome può
- * essersi preso qualcun altro. Chi arriva secondo torna a mani vuote
- * e il bot glielo dice, invece di rubare gli avvisi al primo.
+ * ⚠️ Le condizioni nel `WHERE` non sono prudenza inutile. `telegram_chat_id IS NULL`:
+ * fra il momento in cui un bottone è stato disegnato e quello in cui viene toccato
+ * possono passare giorni, e in mezzo quel nome può essersi preso qualcun altro; chi
+ * arriva secondo torna a mani vuote. `attivo` e `NOT proprietario`: un identificativo
+ * qualunque, anche uno che il bot non ha mai offerto, non deve poter collegare chi non
+ * è una persona accettata o chi è il padrone di casa.
  */
 export async function collega(utenteId, chatId) {
   const { rows } = await connessione().query(
     `UPDATE utenti SET telegram_chat_id = $2
-      WHERE id = $1 AND telegram_chat_id IS NULL
+      WHERE id = $1 AND stato = 'attivo' AND NOT proprietario AND telegram_chat_id IS NULL
       RETURNING nickname`,
     [utenteId, chatId]
   );
 
   return rows[0]?.nickname || null;
+}
+
+/**
+ * Il proprietario si ricollega a questa chat (telefono nuovo, o prima volta): si chiama
+ * solo dopo aver verificato il codice. Restituisce il nome e la chat di prima, per poter
+ * avvisare quella vecchia.
+ */
+export async function collegaProprietario(chatId) {
+  const { rows } = await connessione().query(
+    `WITH vecchio AS (
+       SELECT id, telegram_chat_id AS prima FROM utenti
+        WHERE proprietario AND stato = 'attivo' ORDER BY id LIMIT 1 FOR UPDATE
+     )
+     UPDATE utenti u SET telegram_chat_id = $1
+       FROM vecchio WHERE u.id = vecchio.id
+     RETURNING u.nickname, vecchio.prima`,
+    [chatId]
+  );
+
+  return rows[0] || null;
 }
 
 /** Stacca questa chat da chiunque fosse. */
