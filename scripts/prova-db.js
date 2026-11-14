@@ -10,11 +10,9 @@
 //   - /mancanti dice QUALI numeri mancano;
 //   - due serie create insieme non prendono lo stesso ID.
 //
-// Lo schema è una copia ridotta di quello vero: il trigger che in produzione
-// tiene in ordine i numeri (sql/022 del backend) qui è riscritto in tre
-// righe. Se la 022 cambia comportamento, questa prova non lo sa.
+// Lo schema è una copia ridotta di quello vero (scripts/schema-prova.js).
 
-import pg from "pg";
+import { creaSchemaProva } from "./schema-prova.js";
 import { usaConnessione, registra, annullaUltimo, primaVolta, arretrati, creaSerie, perId } from "../src/collezione.js";
 
 const url = process.env.PROVA_DATABASE_URL;
@@ -35,45 +33,11 @@ function prova(nome, atteso, ottenuto) {
 if (!url) {
   console.log("\n(PROVA_DATABASE_URL non c'è: salto le prove sul database.)\n");
 } else {
-  const schema = `prova_bot_${Math.random().toString(36).slice(2, 10)}`;
-  const locale = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
-  const ssl = locale ? false : { rejectUnauthorized: false };
-
-  const admin = new pg.Pool({ connectionString: url, ssl, max: 1 });
-
-  await admin.query(`CREATE SCHEMA ${schema}`);
-
-  const pool = new pg.Pool({ connectionString: url, ssl, max: 8, options: `-c search_path=${schema}` });
+  const { pool, chiudi } = await creaSchemaProva(url);
 
   usaConnessione(pool);
 
   try {
-    await pool.query(`
-      CREATE TABLE "Manga" (
-        "ID" int PRIMARY KEY, "Titolo" text, "TitoloOriginale" text, "Autore" text, "Disegnatore" text,
-        "Genere" text, "Categoria" text, "Trama" text, "CoverURL" text, "Editore" text,
-        "VolumiTotali" int, "VolumiPosseduti" int NOT NULL DEFAULT 0, "NumeriPosseduti" int[] NOT NULL DEFAULT '{}',
-        "VolumiItalia" int, "Costo" numeric, "PrezzoCopertina" numeric, "StatoSerie" text, "Edizione" text,
-        "AnimeClickID" int, "AnnoInizio" int, "DataAggiunta" date, "SmessaIl" timestamptz);
-
-      -- Come la 022 del backend: numeri in ordine, senza doppioni, e il conteggio che ne deriva.
-      CREATE FUNCTION riordina() RETURNS trigger LANGUAGE plpgsql AS $$
-      BEGIN
-        NEW."NumeriPosseduti" := ARRAY(SELECT DISTINCT n FROM unnest(NEW."NumeriPosseduti") AS n ORDER BY n);
-        NEW."VolumiPosseduti" := cardinality(NEW."NumeriPosseduti");
-        RETURN NEW;
-      END $$;
-      CREATE TRIGGER riordina BEFORE INSERT OR UPDATE ON "Manga" FOR EACH ROW EXECUTE FUNCTION riordina();
-
-      CREATE TABLE acquisti (
-        id bigserial PRIMARY KEY, manga_id int REFERENCES "Manga"("ID") ON DELETE CASCADE,
-        volume_da int, volume_a int, prezzo numeric, data_acquisto date, condizione text, negozio text,
-        telegram_update_id bigint, gia_posseduti int[]);
-      CREATE TABLE telegram_visti (update_id bigint PRIMARY KEY, visto_il timestamptz NOT NULL DEFAULT now());
-      CREATE TABLE utenti (id bigint PRIMARY KEY, proprietario boolean NOT NULL DEFAULT false);
-      CREATE TABLE letture_droppate (manga_id int, utente_id bigint);
-      INSERT INTO utenti VALUES (1, true);`);
-
     const numeri = async (id) => (await pool.query(`SELECT "NumeriPosseduti" AS n FROM "Manga" WHERE "ID" = $1`, [id])).rows[0].n;
 
     console.log("\n/annulla");
@@ -142,9 +106,7 @@ if (!url) {
       prova("sei creazioni insieme: sei ID diversi e nessun errore", [6, 6], [new Set(ok).size, ok.length]);
     }
   } finally {
-    await pool.end().catch(() => {});
-    await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
-    await admin.end().catch(() => {});
+    await chiudi();
   }
 }
 

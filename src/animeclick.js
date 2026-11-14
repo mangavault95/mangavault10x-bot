@@ -22,6 +22,8 @@
 // di una manciata di richieste al mese: il traffico di una persona
 // che sfoglia il sito.
 
+import { attesa } from "./tempo.js";
+
 const BASE = "https://www.animeclick.it";
 
 // Un'intestazione che dice chi siamo: se dà fastidio, chi gestisce il
@@ -102,7 +104,8 @@ async function prendi(url, opzioni = {}) {
   const risposta = await fetch(url, {
     ...opzioni,
     headers: { ...INTESTAZIONI, ...(opzioni.headers || {}) },
-    signal: AbortSignal.timeout(ATTESA)
+    // Il solito tempo, o quello che resta al messaggio (src/tempo.js).
+    signal: AbortSignal.timeout(attesa(ATTESA))
   });
 
   if (!risposta.ok) throw new Error(`AnimeClick HTTP ${risposta.status} su ${url}`);

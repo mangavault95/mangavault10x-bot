@@ -116,6 +116,23 @@ qui va in collezione davvero), e finché c'è un webhook collegato
 Telegram consegna i messaggi là e questo comando non vede niente —
 `npm run webhook -- --togli` prima, `npm run webhook` per rimetterlo.
 
+## Il tempo
+
+Vercel dà 60 secondi alla funzione e poi la chiude senza avvisare. Un messaggio che crea
+due serie nuove fa fino a una decina di richieste in fila a siti che a volte rispondono in
+secondi, quindi il conto del caso peggiore superava i 60. `src/tempo.js` tiene un budget per
+ogni messaggio (48 secondi; gli altri servono a raccontare com'è andata):
+
+- ogni richiesta a un sito esterno prende il suo tempo solito **o quello che resta**, il minore;
+- prima di cominciare una scheda nuova o una ricerca si controlla che ce ne sia abbastanza; se
+  non c'è, la riga **non si perde**: il bot dice quali righe non ha fatto, da rimandare;
+- mentre una scheda si costruisce, poco prima della fine il messaggio «Sto compilando…» diventa
+  «Ci sta mettendo più del previsto…», e se la scheda finisce in tempo la conferma lo riscrive;
+- i prezzi di copertina (pagina delle edizioni) si chiedono insieme ad AniList, non dopo.
+
+`scripts/prova-flusso.js` fa girare tutto questo col vero `api/telegram.js`, un database di
+prova e siti finti lenti. `BUDGET_TELEGRAM_MS` serve solo a quelle prove.
+
 ## Cose da sapere
 
 - **Il prezzo è il totale della riga**, non quello di un volume:

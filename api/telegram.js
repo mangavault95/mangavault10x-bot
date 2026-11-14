@@ -9,6 +9,7 @@
 // avvio non ci sarebbe più.
 
 import { interpreta, blocchi, ripartisci } from "../src/messaggio.js";
+import { conBudget, abbastanza, avvisoTraMs, FRAZIONE, BUDGET_PREDEFINITO_MS } from "../src/tempo.js";
 import * as db from "../src/collezione.js";
 import * as animeclick from "../src/animeclick.js";
 import { copertinaEGeneri } from "../src/anilist.js";
@@ -105,7 +106,7 @@ Se la serie non ce l'hai, la cerco su AnimeClick e la creo con trama, copertina 
  * quanto costano di solito i volumi di quella serie — una media che
  * per un volume speciale può essere lontana.
  */
-async function prezzoDiRipiego(serie, numeri) {
+async function prezzoDiRipiego(serie, numeri, prezziPronti) {
   const quanti = numeri.length;
 
   // AnimeClick sa il prezzo di ogni singolo volume, e non è la stessa
@@ -113,9 +114,13 @@ async function prezzoDiRipiego(serie, numeri) {
   // costava 7,00 €. Vale la pena scaricare la pagina delle edizioni
   // (~1 MB) perché il numero che ne esce è quello stampato in quarta
   // di copertina, non una stima.
-  if (serie.animeClickId) {
+  //
+  // `prezziPronti`: una serie appena creata li ha già chiesti mentre aspettava
+  // AniList (`creaERegistra`). `null` vuol dire «li ho chiesti e non sono
+  // arrivati»: non si rifà la stessa richiesta lenta una seconda volta.
+  if (serie.animeClickId && prezziPronti !== null) {
     try {
-      const prezzi = await animeclick.prezziVolumi(serie.animeClickId, { edizione: serie.edizione });
+      const prezzi = prezziPronti ?? (await animeclick.prezziVolumi(serie.animeClickId, { edizione: serie.edizione }));
       const trovati = numeri.map((n) => prezzi.get(n)?.prezzo).filter((p) => p > 0);
 
       // O tutti o nessuno: mescolare due fonti in un totale solo
@@ -186,12 +191,12 @@ function statoSerie(serie) {
  * dall'elenco vero dei posseduti, quindi è giusto anche per una serie
  * sparsa: «ti manca ancora 6-10» e non un intervallo indovinato.
  */
-async function scrivi({ serie, volumi, prezzo, data, updateId }) {
+async function scrivi({ serie, volumi, prezzo, data, updateId, prezziPronti }) {
   const numeri = volumi ?? [db.primoMancante(serie.numeri)];
   const gruppi = blocchi(numeri);
   const quanti = numeri.length;
 
-  const ripiego = prezzo === null ? await prezzoDiRipiego(serie, numeri) : null;
+  const ripiego = prezzo === null ? await prezzoDiRipiego(serie, numeri, prezziPronti) : null;
   const totale = prezzo ?? ripiego.totale;
 
   // Se AnimeClick ci ha detto il prezzo di copertina e in tabella non
@@ -327,7 +332,7 @@ async function gestisciRiga({ chatId, riga, serie, updateId }) {
  * anche i numeri esatti. In entrambi i casi non decido io: lo dico e
  * lascio il bottone, perché le ristampe e i regali esistono.
  */
-async function conferma({ chatId, serie, volumi, prezzo, giorno, updateId, forza = false }) {
+async function conferma({ chatId, serie, volumi, prezzo, giorno, updateId, forza = false, prezziPronti }) {
   const numeri = volumi ?? [db.primoMancante(serie.numeri)];
 
   if (!forza) {
@@ -359,10 +364,44 @@ async function conferma({ chatId, serie, volumi, prezzo, giorno, updateId, forza
     volumi: numeri,
     prezzo: prezzo === undefined ? null : prezzo,
     data: giorno || null,
-    updateId
+    updateId,
+    prezziPronti
   });
 
   return { testo: esito.testo, registrato: true };
+}
+
+// --------------------------------------------------
+// IL TEMPO (vedi src/tempo.js)
+// --------------------------------------------------
+
+const AVVISO_LENTO =
+  "⏱️ Ci sta mettendo più del previsto e potrei non farcela. Se fra poco non vedi la conferma, " +
+  "guarda con /mese se l'acquisto c'è; se non c'è, rimanda la riga (la scheda, se l'ho già creata, la ritrovo).";
+
+/**
+ * Se la scheda non finisce in tempo, il messaggio non resta fermo su «Sto
+ * compilando…»: poco prima che Vercel chiuda la funzione dice com'è messa.
+ * Se invece finisce, la conferma riscrive lo stesso messaggio e questo avviso
+ * sparisce. Va fermato con `clearTimeout` quando il lavoro è finito.
+ */
+function vigila(chatId, messaggioId) {
+  const tra = avvisoTraMs();
+
+  if (tra === null || !messaggioId) return null;
+
+  return setTimeout(() => {
+    modifica(chatId, messaggioId, AVVISO_LENTO);
+  }, tra);
+}
+
+/** Quello che non si è fatto per tempo, da rimandare. */
+function messaggioNonFatte(testi) {
+  return (
+    "⏱️ Ho finito il tempo che ho a disposizione. Non ho fatto:\n" +
+    testi.map((t) => `• <code>${esc(t)}</code>`).join("\n") +
+    "\n\nRimandamele in un altro messaggio."
+  );
 }
 
 // --------------------------------------------------
@@ -426,6 +465,18 @@ async function creaERegistra({ chatId, animeClickId, volumi, prezzo, giorno, upd
 
   if (!scheda?.titolo) throw new Error("scheda AnimeClick illeggibile");
 
+  // I prezzi servono solo se non li hai battuti tu, e non dipendono da AniList
+  // né dalla serie appena creata: partono insieme alla ricerca di copertina e
+  // generi invece di aspettarla (fino a 6 secondi risparmiati). Se non
+  // arrivano, `null`: `scrivi` non li richiede una seconda volta.
+  const prezziPromessi =
+    prezzo === null || prezzo === undefined
+      ? animeclick.prezziVolumi(animeClickId).catch((errore) => {
+          console.error("prezzi AnimeClick:", errore.message);
+          return null;
+        })
+      : null;
+
   const daAniList = await copertinaEGeneri(
     [scheda.titoloOriginale, scheda.titolo],
     scheda.anno
@@ -462,7 +513,8 @@ async function creaERegistra({ chatId, animeClickId, volumi, prezzo, giorno, upd
     prezzo,
     giorno,
     updateId,
-    forza: true // appena creata: non può avere doppioni
+    forza: true, // appena creata: non può avere doppioni
+    prezziPronti: prezziPromessi ? await prezziPromessi : undefined
   });
 
   return { testo: `🆕 scheda creata da AnimeClick\n${esito.testo}` };
@@ -579,13 +631,20 @@ async function gestisciMessaggio(chatId, testo, updateId) {
   const daChiedere = [];
   const daCercare = [];
   const daCreare = [];
+  const nonFatte = [];
 
   for (const riga of letto.righe) {
+    // Righe che non c'è più il tempo di cominciare: si dicono, non si perdono.
+    if (!abbastanza(FRAZIONE.riga)) {
+      nonFatte.push(riga.testo);
+      continue;
+    }
+
     try {
       const esito = await gestisciRiga({ chatId, riga, serie, updateId });
 
-      if (esito.cercaSuAnimeClick) daCercare.push(esito.cercaSuAnimeClick);
-      else if (esito.creaDaAnimeClick) daCreare.push(esito.creaDaAnimeClick);
+      if (esito.cercaSuAnimeClick) daCercare.push({ ...esito.cercaSuAnimeClick, testo: riga.testo });
+      else if (esito.creaDaAnimeClick) daCreare.push({ ...esito.creaDaAnimeClick, testo: riga.testo });
       else if (esito.bottoni) daChiedere.push(esito);
       else conferme.push(esito.testo);
     } catch (errore) {
@@ -607,11 +666,22 @@ async function gestisciMessaggio(chatId, testo, updateId) {
   }
 
   for (const richiesta of daCercare) {
+    if (!abbastanza(FRAZIONE.ricerca)) {
+      nonFatte.push(richiesta.testo);
+      continue;
+    }
+
     await proponiDaAnimeClick(chatId, richiesta);
   }
 
   for (const richiesta of daCreare) {
+    if (!abbastanza(FRAZIONE.creazione)) {
+      nonFatte.push(richiesta.testo);
+      continue;
+    }
+
     const avviso = await invia(chatId, "📥 Sto compilando la scheda da AnimeClick…");
+    const guardia = vigila(chatId, avviso?.message_id);
 
     try {
       const esito = await creaERegistra({ chatId, ...richiesta, updateId });
@@ -621,8 +691,12 @@ async function gestisciMessaggio(chatId, testo, updateId) {
     } catch (errore) {
       console.error("creazione:", richiesta.animeClickId, errore);
       await modifica(chatId, avviso.message_id, "⚠️ Quella scheda non sono riuscito a leggerla.");
+    } finally {
+      clearTimeout(guardia);
     }
   }
+
+  if (nonFatte.length > 0) await invia(chatId, messaggioNonFatte(nonFatte));
 }
 
 async function gestisciBottone(chatId, richiesta, updateId) {
@@ -654,11 +728,14 @@ async function gestisciBottone(chatId, richiesta, updateId) {
 
   await confermaBottone(richiesta.id);
 
+  let guardia = null;
+
   try {
     let esito;
 
     if (tipo === "n") {
       await modifica(chatId, messaggioId, "📥 Sto compilando la scheda da AnimeClick…");
+      guardia = vigila(chatId, messaggioId);
 
       esito = await creaERegistra({
         chatId,
@@ -694,6 +771,8 @@ async function gestisciBottone(chatId, richiesta, updateId) {
   } catch (errore) {
     console.error("bottone:", richiesta.data, errore);
     await modifica(chatId, messaggioId, "⚠️ Non ci sono riuscito. Riprova fra un attimo.");
+  } finally {
+    clearTimeout(guardia);
   }
 }
 
@@ -701,7 +780,7 @@ async function gestisciBottone(chatId, richiesta, updateId) {
 // WEBHOOK
 // --------------------------------------------------
 
-export default async function handler(req, res) {
+async function lavora(req, res) {
   if (req.method !== "POST") return res.status(405).send("solo POST");
 
   // Il segreto lo manda Telegram in un'intestazione, e l'ha ricevuto
@@ -755,4 +834,15 @@ export default async function handler(req, res) {
   // l'aggiornamento a Telegram, e ritentare significherebbe rischiare
   // di registrare due volte quello che è già stato scritto.
   return res.status(200).send("ok");
+}
+
+/**
+ * Ogni aggiornamento ha il suo orologio (src/tempo.js): 48 dei 60 secondi che
+ * Vercel concede, gli altri servono a dire com'è andata. `BUDGET_TELEGRAM_MS`
+ * esiste per le prove.
+ */
+export default function handler(req, res) {
+  const budget = Number(process.env.BUDGET_TELEGRAM_MS) || BUDGET_PREDEFINITO_MS;
+
+  return conBudget(() => lavora(req, res), budget);
 }

@@ -12,10 +12,11 @@
     "webhook": "node --env-file=.env scripts/webhook.js",
     "chatid": "node --env-file=.env scripts/webhook.js --chatid",
     "prova-uscite": "node --env-file=.env scripts/prova-uscite.js",
-    "test": "node scripts/prova.js && node scripts/prova-regole.js && node scripts/prova-parser.js && node scripts/prova-db.js",
+    "test": "node scripts/prova.js && node scripts/prova-regole.js && node scripts/prova-parser.js && node scripts/prova-db.js && node scripts/prova-flusso.js",
     "prova-parser": "node scripts/prova-parser.js",
     "prova-db": "node scripts/prova-db.js",
-    "prova-regole": "node scripts/prova-regole.js"
+    "prova-regole": "node scripts/prova-regole.js",
+    "prova-flusso": "node scripts/prova-flusso.js"
   },
   "dependencies": {
     "fuse.js": "^7.3.0",

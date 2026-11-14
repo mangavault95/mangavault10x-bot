@@ -13,6 +13,8 @@
 // Se AniList non trova niente — capita per le raccolte e le edizioni
 // solo italiane — si tiene quello che dà AnimeClick e amen.
 
+import { attesa } from "./tempo.js";
+
 const ENDPOINT = "https://graphql.anilist.co";
 
 const QUERY = `
@@ -56,7 +58,7 @@ export async function copertinaEGeneri(titoli, anno) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: QUERY, variables: { search: titolo } }),
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(attesa(6000))
       });
 
       if (!risposta.ok) continue;
