@@ -12,6 +12,23 @@ on:
 jobs:
   controlli:
     runs-on: ubuntu-latest
+    # Un Postgres vero e vuoto, solo per scripts/prova-db.js: lavora in uno
+    # schema suo creato e buttato via. Non è il database del bot e non ci
+    # sono segreti: la password è quella del contenitore.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PROVA_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
