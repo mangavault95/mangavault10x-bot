@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { blocchi, ripartisci } from "../src/messaggio.js";
 import { primoMancante, giaInCasa, TOGLI_NUMERI } from "../src/collezione.js";
+import { editoreCanonico } from "../src/editori.js";
 
 const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "acquisti", "casi.json");
 
@@ -57,6 +58,22 @@ for (const c of casi.giaInCasa) prova(`${c.gruppo.da}-${c.gruppo.a} avendo ${JSO
 
 console.log("\nLa query che toglie i numeri all'annullo");
 prova("è la stessa del backend", casi.togliNumeri, TOGLI_NUMERI.replace(/\s+/g, " ").trim());
+
+console.log("\nI nomi degli editori");
+{
+  // Stesso file nel backend, stessa impronta: la funzione è scritta due volte (src/editori.js qui,
+  // services/editori.js nel backend) e questo è quello che le tiene d'accordo.
+  const testoEditori = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "editori", "casi.json"), "utf8");
+  const casiEditori = JSON.parse(testoEditori);
+
+  prova("il file è lo stesso del backend (impronta)", "4db225e05f4b7591", crypto.createHash("sha256").update(testoEditori).digest("hex").slice(0, 16));
+
+  for (const c of casiEditori.editori) {
+    const ingresso = c.in === "__undefined__" ? undefined : c.in;
+
+    prova(`${JSON.stringify(ingresso) ?? "undefined"} → ${JSON.stringify(c.out)}`, c.out, editoreCanonico(ingresso));
+  }
+}
 
 console.log(falliti ? `\n${falliti} prove fallite.\n` : "\nTutto a posto.\n");
 process.exitCode = falliti ? 1 : 0;

@@ -104,6 +104,15 @@ if (!url) {
       const ok = create.filter((r) => r.status === "fulfilled").map((r) => r.value.id);
 
       prova("sei creazioni insieme: sei ID diversi e nessun errore", [6, 6], [new Set(ok).size, ok.length]);
+
+      // L'editore di AnimeClick entra scritto come in collezione, e il giorno di aggiunta è scritto.
+      const conEditore = await creaSerie({
+        titolo: "Con editore societario", titoloOriginale: null, autore: "A", disegnatore: "D", genere: "Azione", categoria: "seinen",
+        trama: "t", cover: null, editore: "Panini S.p.A.", volumiTotali: 3, stato: "in_corso", anno: 2020, animeClickId: 2000, prezzo: 5
+      });
+      const salvata = (await pool.query(`SELECT "Editore" AS e, "DataAggiunta" IS NOT NULL AS data FROM "Manga" WHERE "ID" = $1`, [conEditore.id])).rows[0];
+
+      prova("l'editore «Panini S.p.A.» di AnimeClick entra come «Panini», con la data di aggiunta", ["Panini", true], [salvata.e, salvata.data]);
     }
   } finally {
     await chiudi();

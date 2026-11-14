@@ -14,6 +14,7 @@
 
 import pg from "pg";
 import Fuse from "fuse.js";
+import { editoreCanonico } from "./editori.js";
 
 // Una connessione sola per istanza: su serverless ogni invocazione
 // che ne apre una nuova consuma uno slot del pooler, e Supabase ne
@@ -546,7 +547,9 @@ export async function creaSerie(dati) {
         dati.categoria ?? null,
         dati.trama,
         dati.cover,
-        dati.editore,
+        // Il nome di AnimeClick, scritto come in collezione (src/editori.js):
+        // una variante diventerebbe un editore nuovo e una serie senza logo.
+        editoreCanonico(dati.editore),
         dati.volumiTotali,
         dati.stato,
         dati.anno,
